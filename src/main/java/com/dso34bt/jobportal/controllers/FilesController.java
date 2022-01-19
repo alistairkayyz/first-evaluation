@@ -3,15 +3,7 @@ package com.dso34bt.jobportal.controllers;
 import com.dso34bt.jobportal.model.*;
 import com.dso34bt.jobportal.services.CandidateService;
 import com.dso34bt.jobportal.services.DocumentService;
-import com.dso34bt.jobportal.services.ExperienceService;
-import com.dso34bt.jobportal.services.QualificationService;
 import com.dso34bt.jobportal.utilities.Session;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
@@ -30,27 +22,16 @@ import java.util.Optional;
 
 @Controller
 public class FilesController {
-    final PDFont FONT = PDType1Font.HELVETICA;
-    final float FONT_SIZE = 12;
-    final float LEADING = -1.5f * FONT_SIZE;
     private final DocumentService documentService;
     private final CandidateService candidateService;
-    private final ExperienceService experienceService;
-    private final QualificationService qualificationService;
 
-    public FilesController(DocumentService documentService,
-                           CandidateService candidateService,
-                           ExperienceService experienceService,
-                           QualificationService qualificationService) {
+    public FilesController(DocumentService documentService, CandidateService candidateService) {
         this.documentService = documentService;
         this.candidateService = candidateService;
-        this.experienceService = experienceService;
-        this.qualificationService = qualificationService;
     }
 
     @GetMapping("files")
-    public String files(Model model, @RequestParam(value = "id", required = false) String id,
-                        @RequestParam(value = "action", required = false) String action){
+    public String files(Model model, @RequestParam(value = "id", required = false) String id){
         if (Session.getCandidateAccount() == null) {
             model.addAttribute("user", new CandidateAccount());
 
@@ -60,39 +41,34 @@ public class FilesController {
         List<Document> documents = new ArrayList<>();
 
         String success = "";
-        StringBuilder error = new StringBuilder();
+        String error = "";
 
-        if (id != null && action != null){
+        if (id != null){
 
-            // Generate CV
-            if (id.equalsIgnoreCase("cv") && action.equalsIgnoreCase("generate")){
-                List<String> list = new ArrayList<>();
-                if (!candidateService.candidateExists(account.getEmail()))
-                    list.add("PROFILE");
+            // delete all files
+            if (id.equalsIgnoreCase("all")){
+                List<Document> documentList = documentService.getCandidateDocuments(account.getEmail());
 
-                if (!qualificationService.existsByEmail(account.getEmail()))
-                    list.add("QUALIFICATION");
+                for (Document document : documentList){
+                    if (documentService.deleteByEntity(document)){
+                        error  ="ERROR: Failed to delete '" + document.getTitle() + "'";
+                        break;
+                    }
+                }
 
-                if (!experienceService.existsByCandidateEmail(account.getEmail()))
-                    list.add("EXPERIENCE");
-
-                if (list.isEmpty())
-                    success = "CV was successfully generated";
-                else{
-                    error = new StringBuilder("Please complete: ");
-                    for (String text : list)
-                        error.append("[ ").append(text).append(" ] ");
+                if (!documentService.existsByCandidateEmail(account.getEmail())){
+                    success = "Successfully deleted all files";
                 }
             }
 
             // delete the specified file
-            if (!id.equalsIgnoreCase("cv") && action.equalsIgnoreCase("delete")){
+            if (!id.equalsIgnoreCase("all")){
                 Document document = documentService.findById(Long.parseLong(id)).get();
 
                 if (documentService.deleteByEntity(document))
-                    success = "Successfully deleted '" + document.getTitle() + "'";
+                    error  ="ERROR: Failed to delete '" + document.getTitle() + "'";
                 else
-                    error = new StringBuilder("ERROR: Failed to delete '" + document.getTitle() + "'");
+                    success = "Successfully deleted '" + document.getTitle() + "'";
             }
         }
 
@@ -101,7 +77,7 @@ public class FilesController {
             documents = documentService.getCandidateDocuments(account.getEmail());
 
         model.addAttribute("success", success);
-        model.addAttribute("error", error.toString());
+        model.addAttribute("error", error);
         model.addAttribute("documents", documents);
         model.addAttribute("upload", new Upload());
         model.addAttribute("user", Session.getCandidateAccount());
@@ -120,6 +96,16 @@ public class FilesController {
         CandidateAccount account = Session.getCandidateAccount();
 
         Document document = new Document();
+
+        if (!documentService.existsByCandidateEmailAndTitle(account.getEmail(), "CV")
+                && !file.getTitle().equalsIgnoreCase("cv")){
+            model.addAttribute("success", "");
+            model.addAttribute("error", "ERROR: You must upload a 'CV' first.");
+            model.addAttribute("documents", documentService.getCandidateDocuments(account.getEmail()));
+            model.addAttribute("upload", new Upload());
+            model.addAttribute("user", Session.getCandidateAccount());
+            return "files";
+        }
 
         try {
             List<Document> documents = documentService.getCandidateDocuments(account.getEmail());
@@ -205,94 +191,5 @@ public class FilesController {
         }
         model.addAttribute("success", success);
         model.addAttribute("error",error);
-    }
-
-    public void multiline(String text) {
-        try (final PDDocument doc = new PDDocument()) {
-
-            PDPage page = new PDPage();
-            doc.addPage(page);
-            PDPageContentStream contentStream = new PDPageContentStream(doc, page);
-
-            PDRectangle mediaBox = page.getMediaBox();
-            float marginY = 80;
-            float marginX = 60;
-            float width = mediaBox.getWidth() - 2 * marginX;
-            float startX = mediaBox.getLowerLeftX() + marginX;
-            float startY = mediaBox.getUpperRightY() - marginY;
-
-
-
-            contentStream.beginText();
-            addParagraph(contentStream, width, startX, startY, text, false);
-            //contentStream.setFont(FONT, FONT_SIZE);
-            //contentStream.showText("Start here...");
-            addParagraph(contentStream, width, 0, -FONT_SIZE, text, false);
-            contentStream.endText();
-
-            contentStream.close();
-
-            doc.save("example.pdf");
-        }
-        catch (IOException e) {
-            System.err.println("Exception while trying to create pdf document - " + e);
-        }
-    }
-
-    private void addParagraph(PDPageContentStream contentStream, float width, float sx,
-                              float sy, String text, boolean justify) throws IOException {
-
-        List<String> lines = parseLines(text, width);
-        contentStream.setFont(FONT, FONT_SIZE);
-        contentStream.newLineAtOffset(sx, sy);
-
-        for (String line : lines) {
-            float charSpacing = 0;
-            if (justify) {
-                if (line.length() > 1) {
-                    float size = FONT_SIZE * FONT.getStringWidth(line) / 1000;
-                    float free = width - size;
-                    if (free > 0 && !lines.get(lines.size() - 1).equals(line)) {
-                        charSpacing = free / (line.length() - 1);
-                    }
-                }
-            }
-            contentStream.setCharacterSpacing(charSpacing);
-            contentStream.showText(line);
-            contentStream.newLineAtOffset(0, LEADING);
-        }
-    }
-
-    private List<String> parseLines(String text, float width) throws IOException {
-        List<String> lines = new ArrayList<>();
-
-        int lastSpace = -1;
-
-        while (text.length() > 0) {
-            int spaceIndex = text.indexOf(' ', lastSpace + 1);
-
-            if (spaceIndex < 0)
-                spaceIndex = text.length();
-
-            String subString = text.substring(0, spaceIndex);
-            float size = FONT_SIZE * FONT.getStringWidth(subString) / 1000;
-            if (size > width) {
-                if (lastSpace < 0) {
-                    lastSpace = spaceIndex;
-                }
-                subString = text.substring(0, lastSpace);
-                lines.add(subString);
-                text = text.substring(lastSpace).trim();
-                lastSpace = -1;
-            }
-            else if (spaceIndex == text.length()) {
-                lines.add(text);
-                text = "";
-            }
-            else {
-                lastSpace = spaceIndex;
-            }
-        }
-        return lines;
     }
 }

@@ -30,9 +30,23 @@ public class CandidateController {
 
             return "login";
         }
+
+
+
         Candidate candidate = new Candidate();
 
         CandidateAccount account = Session.getCandidateAccount();
+
+        if (!documentService.existsByCandidateEmailAndTitle(account.getEmail(), "CV")){
+
+            model.addAttribute("show", false);
+            model.addAttribute("success", "");
+            model.addAttribute("error", "ERROR: You must upload a 'CV' first.");
+            model.addAttribute("candidate", candidate);
+            model.addAttribute("user", Session.getCandidateAccount());
+
+            return "profile";
+        }
 
         String success = "";
         String error = "";

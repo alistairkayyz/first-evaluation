@@ -1,9 +1,6 @@
 package com.dso34bt.jobportal.controllers;
 
-import com.dso34bt.jobportal.model.Candidate;
-import com.dso34bt.jobportal.model.CandidateAccount;
-import com.dso34bt.jobportal.model.Qualifications;
-import com.dso34bt.jobportal.model.Upload;
+import com.dso34bt.jobportal.model.*;
 import com.dso34bt.jobportal.services.CandidateService;
 import com.dso34bt.jobportal.services.DocumentService;
 import com.dso34bt.jobportal.services.QualificationService;
@@ -43,6 +40,18 @@ public class QualificationsController {
 
         String success = "";
         String error = "";
+
+        if (!documentService.existsByCandidateEmailAndTitle(account.getEmail(), "CV")){
+
+            model.addAttribute("show", false);
+            model.addAttribute("success", "");
+            model.addAttribute("error", "ERROR: You must upload a 'CV' first.");
+            model.addAttribute("qualification", new Qualifications());
+            model.addAttribute("qualificationsList", qualificationsList);
+            model.addAttribute("user", Session.getCandidateAccount());
+
+            return "qualifications";
+        }
 
         // get stored files if they exist
         if (qualificationService.existsByEmail(account.getEmail()))
